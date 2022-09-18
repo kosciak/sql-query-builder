@@ -1,7 +1,7 @@
 import itertools
 import logging
 
-from .utils import columns_list
+from .utils import fields
 
 
 log = logging.getLogger('drewno.sql.queries')
@@ -13,34 +13,108 @@ class Query:
         self.table = table
         self.index = index
 
+    def _sql(self):
+        # Yield from list of lines
+        yield from []
+
     def sql(self):
-        return '\n'.join(itertools.chain(
-            self._create_table_sql(),
-        ))
+        return '\n'.join(itertools.chain(self._sql()))
 
     def __str__(self):
         return self.sql()
 
 
-class WithConditions:
+class RowsFiltered:
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.conditions = []
+        self.rows_conditions = []
 
     def where(self, *conditions):
-        self.conditions.extend(conditions)
+        self.rows_conditions.extend(conditions)
         return self
 
-    def _where_sql(self):
-        if not self.conditions:
-            return []
-        conditions = ' AND '.join(f'{condition!s}' for condition in self.conditions)
+    def _sql(self):
+        yield from super()._sql()
+        if not self.rows_conditions:
+            return
+        conditions = ' AND '.join(f'{condition!s}' for condition in self.rows_conditions)
         sql = [
             f'WHERE',
             f'    {conditions}',
         ]
-        return sql
+        yield from sql
+
+
+class Grouped:
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.group_by_columns = []
+
+    def group_by(self, *columns):
+        self.group_by_columns.extend(columns)
+        return self
+
+    def _sql(self):
+        yield from super()._sql()
+        if not self.group_by_columns:
+            return
+        sql = [
+            f'GROUP BY',
+            f'    {fields(self.group_by_columns)}',
+        ]
+        yield from sql
+
+
+class GroupsFiltered(Grouped):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.groups_conditions = []
+
+    def having(self, *conditions):
+        self.groups_conditions.extend(conditions)
+        return self
+
+    def _sql(self):
+        yield from super()._sql()
+        if not self.groups_conditions:
+            return
+        conditions = ' AND '.join(f'{condition!s}' for condition in self.groups_conditions)
+        sql = [
+            f'HAVING',
+            f'    {conditions}',
+        ]
+        yield from sql
+
+
+class Ordered:
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.order_by_columns = []
+
+    def order_by(self, *columns, order=None, nulls=None):
+        self.order_by_columns.append([columns, order, nulls])
+        return self
+
+    def _sql(self):
+        yield from super()._sql()
+        if not self.order_by_columns:
+            return
+        sql = [
+            f'ORDER BY',
+        ]
+        for columns, order, nulls in self.order_by_columns:
+            sql.append(
+                f'    {fields(columns)}' \
+                f'{order and " "+order or ""}' \
+                f'{nulls and " NULLS "+nulls or ""}' \
+                f',',
+            )
+        sql[-1] = sql[-1].rstrip(',')
+        yield from sql
 
 
 class CreateTable(Query):
@@ -49,26 +123,22 @@ class CreateTable(Query):
         super().__init__(table=table)
         self.if_not_exists = if_not_exists
 
-    def _create_table_sql(self):
+    def _sql(self):
         sql = [
             f'CREATE TABLE' \
             f'{self.if_not_exists and " IF NOT EXISTS " or " "} ' \
             f'{self.table!s} (',
         ]
         for column in self.table.columns:
-            sql.append(f'    {column.definition},')
+            sql.append(f'    {column.sql()},')
         for constraint in self.table.constraints:
             sql.append(f'    {constraint},')
         for option in self.table.options:
             sql.append(f'    {option},')
         sql[-1] = sql[-1].rstrip(',')
         sql.append(')')
-        return sql
-
-    def sql(self):
-        return '\n'.join(itertools.chain(
-            self._create_table_sql(),
-        ))
+        yield from sql
+        yield from super()._sql()
 
 
 class CreateIndex(Query):
@@ -77,7 +147,7 @@ class CreateIndex(Query):
         super().__init__(index=index)
         self.if_not_exists = if_not_exists
 
-    def _create_index_sql(self):
+    def _sql(self):
         sql = [
             f'CREATE' \
             f'{self.index.unique and " UNIQUE" or ""}' \
@@ -85,54 +155,32 @@ class CreateIndex(Query):
             f'{self.if_not_exists and " IF NOT EXISTS " or " "}' \
             f'{self.index!s}',
             f'ON {self.index.table!s} (',
-            f'    {columns_list(self.index.columns)}',
+            f'    {fields(self.index.columns)}',
             f')',
         ]
-        return sql
-
-    def sql(self):
-        return '\n'.join(itertools.chain(
-            self._create_index_sql(),
-        ))
+        yield from sql
+        yield from super()._sql()
 
 
-class Select(WithConditions, Query):
+class Select(Ordered, GroupsFiltered, RowsFiltered, Query):
 
     ALL_COLUMNS = ['*', ]
 
-    def __init__(self, table, *columns):
+    def __init__(self, table, *columns, distinct=False):
         super().__init__(table=table)
+        self.distinct = distinct
         self.columns = columns or self.ALL_COLUMNS
-        self.group_by_columns = []
 
-    def group_by(self, *columns):
-        self.group_by_columns.extend(columns)
-        return self
-
-    def _select_from_sql(self):
+    def _sql(self):
         sql = [
-            f'SELECT',
-            f'    {columns_list(self.columns)}',
+            f'SELECT' \
+            f'{self.distinct and " DISTINCT" or ""}',
+            f'    {fields(self.columns)}',
             f'FROM',
             f'    {self.table!s}',
         ]
-        return sql
-
-    def _group_by_sql(self):
-        if not self.group_by_columns:
-            return []
-        sql = [
-            f'GROUP BY',
-            f'    {columns_list(self.group_by_columns)}',
-        ]
-        return sql
-
-    def sql(self):
-        return '\n'.join(itertools.chain(
-            self._select_from_sql(),
-            self._where_sql(),
-            self._group_by_sql(),
-        ))
+        yield from sql
+        yield from super()._sql()
 
 
 class Insert(Query):
@@ -147,7 +195,7 @@ class Insert(Query):
         self.insert_values = values
         return self
 
-    def _insert_into_sql(self):
+    def _sql(self):
         sql = [
             f'INSERT' \
             f'{self.replace and " OR REPLACE " or " "}' \
@@ -156,24 +204,20 @@ class Insert(Query):
         ]
         if self.columns:
             sql.extend([
-                f'    {columns_list(self.columns)}',
+                f'    {fields(self.columns)}',
                 f')',
             ])
         if self.insert_values:
             sql.extend([
                 f'VALUES (',
-                f'    {", ".join(self.insert_values)}',
+                f'    {fields(self.insert_values)}',
                 f')',
             ])
-        return sql
-
-    def sql(self):
-        return '\n'.join(itertools.chain(
-            self._insert_into_sql(),
-        ))
+        yield from sql
+        yield from super()._sql()
 
 
-class Update(WithConditions, Query):
+class Update(RowsFiltered, Query):
 
     def __init__(self, table):
         super().__init__(table=table)
@@ -183,15 +227,10 @@ class Update(WithConditions, Query):
         self.values.append((column, value))
         return self
 
-    def _update_sql(self):
+    def _sql(self):
         sql = [
             f'UPDATE',
             f'    {self.table!s}',
-        ]
-        return sql
-
-    def _set_sql(self):
-        sql = [
             f'SET',
         ]
         for column, value in self.values:
@@ -200,28 +239,17 @@ class Update(WithConditions, Query):
             )
         if self.values:
             sql[-1] = sql[-1].rstrip(',')
-        return sql
-
-    def sql(self):
-        return '\n'.join(itertools.chain(
-            self._update_sql(),
-            self._set_sql(),
-            self._where_sql(),
-        ))
+        yield from sql
+        yield from super()._sql()
 
 
-class Delete(WithConditions, Query):
+class Delete(RowsFiltered, Query):
 
-    def _delete_from_sql(self):
+    def _sql(self):
         sql = [
             f'DELETE FROM',
             f'    {self.table!s}',
         ]
-        return sql
-
-    def sql(self):
-        return '\n'.join(itertools.chain(
-            self._delete_from_sql(),
-            self._where_sql(),
-        ))
+        yield from sql
+        yield from super()._sql()
 

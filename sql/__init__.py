@@ -1,4 +1,5 @@
 from .core import Columns, Column, Table
+from .core import Order, Nulls
 from .core import Condition
 
 from .parameters import QmarkParameter, FormatParameter, NamedParameter, PyformatParameter, NumericParameter

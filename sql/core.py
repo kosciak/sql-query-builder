@@ -1,10 +1,20 @@
 import logging
 
 from . import queries
-from .utils import columns_list
+from .utils import fields
 
 
 log = logging.getLogger('drewno.sql.core')
+
+
+class Order:
+    ASC = 'ASC'
+    DESC = 'DESC'
+
+
+class Nulls:
+    FIRST = 'FIRST'
+    LASR = 'LAST'
 
 
 class Alias:
@@ -17,10 +27,61 @@ class Alias:
         return f'{self.name!s} AS {self.alias!s}'
 
 
-class Column:
+class Field:
+
+    def __init__(self, name):
+        self.name = name
+
+    def __add__(self, value):
+        return Field(f'{self!s} + {value!s}')
+
+    def __sub__(self, value):
+        return Field(f'{self!s} - {value!s}')
+
+    def __mul__(self, value):
+        return Field(f'{self!s} * {value!s}')
+
+    def __truediv__(self, value):
+        return Field(f'{self!s} / {value!s}')
+
+    def __mod__(self, value):
+        return Field(f'{self!s} % {value!s}')
+
+    def __and__(self, value):
+        return Field(f'{self!s} & {value!s}')
+
+    def __or__(self, value):
+        return Field(f'{self!s} | {value!s}')
+
+    def __xor__(self, value):
+        return Field(f'{self!s} ^ {value!s}')
+
+    def __eq__(self, value):
+        return Field(f'{self!s} = {value!s}')
+
+    def __ne__(self, value):
+        return Field(f'{self!s} != {value!s}')
+
+    def __lt__(self, value):
+        return Field(f'{self!s} < {value!s}')
+
+    def __le__(self, value):
+        return Field(f'{self!s} <= {value!s}')
+
+    def __gt__(self, value):
+        return Field(f'{self!s} > {value!s}')
+
+    def __ge__(self, value):
+        return Field(f'{self!s} >= {value!s}')
+
+    def __str__(self):
+        return self.name
+
+
+class Column(Field):
 
     def __init__(self, name, data_type=None, constraints=None):
-        self.name = name
+        super().__init__(name=name)
         self.data_type = data_type
         self.constraints = constraints
 
@@ -38,35 +99,13 @@ class Column:
             constraints = parts[2]
         return Column(name, data_type, constraints)
 
-    @property
-    def definition(self):
+    def sql(self):
         definition = [self.name, ]
         if self.data_type:
             definition.append(self.data_type)
         if self.constraints:
             definition.append(self.constraints)
         return " ".join(definition)
-
-    def __eq__(self, value):
-        return f'{self!s} = {value!s}'
-
-    def __ne__(self, value):
-        return f'{self!s} != {value!s}'
-
-    def __lt__(self, value):
-        return f'{self!s} < {value!s}'
-
-    def __le__(self, value):
-        return f'{self!s} <= {value!s}'
-
-    def __gt__(self, value):
-        return f'{self!s} > {value!s}'
-
-    def __ge__(self, value):
-        return f'{self!s} >= {value!s}'
-
-    def __str__(self):
-        return self.name
 
     def __repr__(self):
         return f'Column("{self.definition}")'
@@ -91,7 +130,7 @@ class Columns:
         yield from self._columns.values()
 
     def __repr__(self):
-        return f'<{self.__class__.__name__} {columns_list(self)}>'
+        return f'<{self.__class__.__name__} {fields(self)}>'
 
 
 class Table:
@@ -104,31 +143,30 @@ class Table:
 
     def primary_key(self, *columns):
         self.constraints.append(
-            f"PRIMARY KEY ({columns_list(columns)})"
+            f"PRIMARY KEY ({fields(columns)})"
         )
         return self
 
     def unique(self, *columns):
         self.constraints.append(
-            f"UNIQUE ({columns_list(columns)})"
+            f"UNIQUE ({fields(columns)})"
         )
         return self
 
     def create(self, if_not_exists=False):
         return queries.CreateTable(self, if_not_exists)
 
-    def drop(self):
-        # TODO:
-        pass
+    # TODO: def alter(self, ...):
+    # TODO: def drop(self, ...):
 
     def index(self, name, *columns, unique=False):
         return Index(name, self, *columns, unique=unique)
 
-    def select(self, *columns):
-        return queries.Select(self, *columns)
+    def select(self, *columns, distinct=False):
+        return queries.Select(self, *columns, distinct=distinct)
 
     def insert(self, *columns, replace=False):
-        return queries.Insert(self, *columns, replace=False)
+        return queries.Insert(self, *columns, replace=replace)
 
     def update(self):
         return queries.Update(self)

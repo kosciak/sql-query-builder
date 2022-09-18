@@ -1,5 +1,7 @@
 import logging
 
+from .core import Field
+
 
 log = logging.getLogger('drewno.sql.parameters')
 
@@ -13,7 +15,7 @@ class Parameter:
 class QmarkParameter(Parameter):
 
     def __call__(self, name):
-        return '?'
+        return Field('?')
 
 
 class NumericParameter(Parameter):
@@ -23,25 +25,25 @@ class NumericParameter(Parameter):
 
     def __call__(self, name):
         self.count += 1
-        return f':{self.count}'
+        return Field(f':{self.count}')
 
 
 class NamedParameter(Parameter):
 
     def __call__(self, name):
-        return f':{name}'
+        return Field(f':{name}')
 
 
 class FormatParameter(Parameter):
 
     def __call__(self, name):
-        return '%s'
+        return Field('%s')
 
 
 class PyformatParameter(Parameter):
 
     def __call__(self, name):
-        return f'%({name})s'
+        return Field(f'%({name})s')
 
 
 PARAMSTYLES = {
