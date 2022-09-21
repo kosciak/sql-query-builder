@@ -1,10 +1,19 @@
 import logging
 
-from . import queries
-from .utils import fields
-
 
 log = logging.getLogger('drewno.sql.core')
+
+
+def get_name(e, **kwargs):
+    if hasattr(e, 'get_name'):
+        return e.get_name(**kwargs)
+    return e
+
+
+def sql(e, **kwargs):
+    if hasattr(e, 'sql'):
+        return e.sql(**kwargs)
+    return e
 
 
 class Order:
@@ -17,212 +26,177 @@ class Nulls:
     LASR = 'LAST'
 
 
-class Alias:
-
-    def __init__(self, name, alias):
-        self.name = name
-        self.alias = alias
-
-    def __str__(self):
-        return f'{self.name!s} AS {self.alias!s}'
-
-
-class Field:
-
-    def __init__(self, name):
-        self.name = name
-
-    def __add__(self, value):
-        return Field(f'{self!s} + {value!s}')
-
-    def __sub__(self, value):
-        return Field(f'{self!s} - {value!s}')
-
-    def __mul__(self, value):
-        return Field(f'{self!s} * {value!s}')
-
-    def __truediv__(self, value):
-        return Field(f'{self!s} / {value!s}')
-
-    def __mod__(self, value):
-        return Field(f'{self!s} % {value!s}')
-
-    def __and__(self, value):
-        return Field(f'{self!s} & {value!s}')
-
-    def __or__(self, value):
-        return Field(f'{self!s} | {value!s}')
-
-    def __xor__(self, value):
-        return Field(f'{self!s} ^ {value!s}')
+class Comparable:
 
     def __eq__(self, value):
-        return Field(f'{self!s} = {value!s}')
+        return Operation('=', self, value)
 
     def __ne__(self, value):
-        return Field(f'{self!s} != {value!s}')
+        return Operation('<>', self, value)
 
     def __lt__(self, value):
-        return Field(f'{self!s} < {value!s}')
+        return Operation('<', self, value)
 
     def __le__(self, value):
-        return Field(f'{self!s} <= {value!s}')
+        return Operation('<=', self, value)
 
     def __gt__(self, value):
-        return Field(f'{self!s} > {value!s}')
+        return Operation('>', self, value)
 
     def __ge__(self, value):
-        return Field(f'{self!s} >= {value!s}')
-
-    def __str__(self):
-        return self.name
+        return Operation('>=', self, value)
 
 
-class Column(Field):
+class Binary:
 
-    def __init__(self, name, data_type=None, constraints=None):
-        super().__init__(name=name)
-        self.data_type = data_type
-        self.constraints = constraints
+    def __and__(self, value):
+        return Operation('&', self, value)
 
-    @classmethod
-    def parse(cls, column):
-        if isinstance(column, cls):
-            return column
-        parts = [part.strip() for part in column.split(maxsplit=2) if part.strip()]
-        name = parts[0]
-        data_type = None
-        constraints = None
-        if len(parts) > 1:
-            data_type = parts[1]
-        if len(parts) > 2:
-            constraints = parts[2]
-        return Column(name, data_type, constraints)
+    def __or__(self, value):
+        return Operation('|', self, value)
 
-    def sql(self):
-        definition = [self.name, ]
-        if self.data_type:
-            definition.append(self.data_type)
-        if self.constraints:
-            definition.append(self.constraints)
-        return " ".join(definition)
+    def __xor__(self, value):
+        return Operation('^', self, value)
 
-    def __repr__(self):
-        return f'Column("{self.definition}")'
+    def __lshift__(self, value):
+        return Operation('<<', self, value)
 
+    def __rshift__(self, value):
+        return Operation('>>', self, value)
 
-class Columns:
+    def __rand__(self, value):
+        return Operation('&', value, self)
 
-    def __init__(self, *columns):
-        self._columns = self._parse_columns(columns)
+    def __ror__(self, value):
+        return Operation('|', value, self)
 
-    def _parse_columns(self, columns):
-        parsed_columns = {}
-        for column in columns:
-            column = Column.parse(column)
-            parsed_columns[column.name] = column
-        return parsed_columns
+    def __rxor__(self, value):
+        return Operation('^', value, self)
 
-    def __getattr__(self, column):
-        return self._columns[column]
+    def __rlshift__(self, value):
+        return Operation('<<', value, self)
 
-    def __iter__(self):
-        yield from self._columns.values()
+    def __rrshift__(self, value):
+        return Operation('>>', value, self)
 
-    def __repr__(self):
-        return f'<{self.__class__.__name__} {fields(self)}>'
+    # TODO: __invert__(self):
 
 
-class Table:
+class Numerical:
 
-    def __init__(self, name, columns):
+    def __add__(self, value):
+        return Operation('+', self, value)
+
+    def __sub__(self, value):
+        return Operation('-', self, value)
+
+    def __mul__(self, value):
+        return Operation('*', self, value)
+
+    def __truediv__(self, value):
+        return Operation('/', self, value)
+
+    def __mod__(self, value):
+        return Operation('%', self, value)
+
+    def __radd__(self, value):
+        return Operation('+', value, self)
+
+    def __rsub__(self, value):
+        return Operation('-', value, self)
+
+    def __rmul__(self, value):
+        return Operation('*', value, self)
+
+    def __rtruediv__(self, value):
+        return Operation('/', value, self)
+
+    def __rmod__(self, value):
+        return Operation('%', value, self)
+
+
+
+class Aliasable:
+
+    def alias(self, alias):
+        return Alias(self, alias)
+
+
+class Field(Comparable, Binary, Numerical, Aliasable):
+
+    def __init__(self, name, parent=None):
         self.name = name
-        self.columns = columns
-        self.constraints = []
-        self.options = []
+        self.parent = parent
 
-    def primary_key(self, *columns):
-        self.constraints.append(
-            f"PRIMARY KEY ({fields(columns)})"
-        )
-        return self
-
-    def unique(self, *columns):
-        self.constraints.append(
-            f"UNIQUE ({fields(columns)})"
-        )
-        return self
-
-    def create(self, if_not_exists=False):
-        return queries.CreateTable(self, if_not_exists)
-
-    # TODO: def alter(self, ...):
-    # TODO: def drop(self, ...):
-
-    def index(self, name, *columns, unique=False):
-        return Index(name, self, *columns, unique=unique)
-
-    def select(self, *columns, distinct=False):
-        return queries.Select(self, *columns, distinct=distinct)
-
-    def insert(self, *columns, replace=False):
-        return queries.Insert(self, *columns, replace=replace)
-
-    def update(self):
-        return queries.Update(self)
-
-    def delete(self):
-        return queries.Delete(self)
-
-    def __str__(self):
+    @property
+    def qualified_name(self):
+        if self.parent:
+            return f'{self.parent!s}.{self.name}'
         return self.name
 
-    def __repr__(self):
-        return f'<{self.__class__.__name__} name="{self.name}">'
+    def get_name(self, qualified=False, **kwargs):
+        if qualified:
+            return self.qualified_name
+        return self.name
+
+    def sql(self, **kwargs):
+        return self.get_name(**kwargs)
+
+    def __str__(self):
+        return self.sql()
 
 
-class Index:
+class Alias(Field):
 
-    def __init__(self, name, table, *columns, unique=False):
+    def __init__(self, field, alias):
+        super().__init__(name=alias)
+        self.field = field
+
+    def sql(self, **kwargs):
+        return f'{get_name(self.field, **kwargs)} AS {self.name!s}'
+
+
+class Operation(Comparable, Binary, Numerical, Aliasable):
+
+    def __init__(self, operator, left, right):
+        self.operator = operator
+        self.left = left
+        self.right = right
+
+    def sql(self, **kwargs):
+        return f'{get_name(self.left, **kwargs)}' \
+               f' {self.operator} ' \
+               f'{get_name(self.right, **kwargs)}'
+
+
+class FieldsList(list):
+
+    def sql(self, **kwargs):
+        return ', '.join(
+            f'{sql(field, **kwargs)}' for field in self
+        )
+
+
+class And(list):
+
+    def sql(self, **kwargs):
+        return f'({" AND ".join(sql(condition, **kwargs) for condition in self)})'
+
+
+class Aggregate(Field):
+
+    ALL_COLUMNS = ['*', ]
+
+    def __init__(self, name, *columns, distinct=False):
         self.name = name
-        self.table = table
-        self.unique = unique
-        self.columns = columns
+        self.distinct = distinct
+        self.columns = FieldsList(columns or self.ALL_COLUMNS)
 
-    def create(self, if_not_exists=False):
-        return queries.CreateIndex(self, if_not_exists)
+    def get_name(self, **kwargs):
+        return self.sql(**kwargs)
 
-    # TODO: def drop(self, ...):
-
-    def __str__(self):
-        return self.name
-
-    # TODO: def __repr__(self):
-
-
-class Condition:
-
-    @staticmethod
-    def eq(column):
-        return f'{column!s} = ?'
-
-    @staticmethod
-    def ne(column):
-        return f'{column!s} != ?'
-
-    @staticmethod
-    def lt(column):
-        return f'{column!s} < ?'
-
-    @staticmethod
-    def le(column):
-        return f'{column!s} <= ?'
-
-    @staticmethod
-    def gt(column):
-        return f'{column!s} > ?'
-
-    @staticmethod
-    def ge(column):
-        return f'{column!s} >= ?'
+    def sql(self, **kwargs):
+        return f'{self.name}(' \
+               f'{self.distinct and "DISTINCT " or ""}' \
+               f'{self.columns.sql(**kwargs)})'
 

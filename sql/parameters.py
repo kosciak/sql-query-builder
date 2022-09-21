@@ -14,7 +14,7 @@ class Parameter:
 
 class QmarkParameter(Parameter):
 
-    def __call__(self, name):
+    def __call__(self, name=None):
         return Field('?')
 
 
@@ -36,7 +36,7 @@ class NamedParameter(Parameter):
 
 class FormatParameter(Parameter):
 
-    def __call__(self, name):
+    def __call__(self, name=None):
         return Field('%s')
 
 
