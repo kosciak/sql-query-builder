@@ -1,4 +1,5 @@
-from .core import Order, Nulls
+from .enums import Order, Nulls, Join
+
 from .core import Alias
 from .core import Aggregate
 

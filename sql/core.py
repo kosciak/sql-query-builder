@@ -7,23 +7,15 @@ log = logging.getLogger('drewno.sql.core')
 def get_name(e, **kwargs):
     if hasattr(e, 'get_name'):
         return e.get_name(**kwargs)
+    if hasattr(e, 'name'):
+        return e.name
     return e
 
 
-def sql(e, **kwargs):
+def to_sql(e, **kwargs):
     if hasattr(e, 'sql'):
         return e.sql(**kwargs)
     return e
-
-
-class Order:
-    ASC = 'ASC'
-    DESC = 'DESC'
-
-
-class Nulls:
-    FIRST = 'FIRST'
-    LASR = 'LAST'
 
 
 class Comparable:
@@ -131,12 +123,15 @@ class Field(Comparable, Binary, Numerical, Aliasable):
     @property
     def qualified_name(self):
         if self.parent:
-            return f'{self.parent!s}.{self.name}'
+            return f'{get_name(self.parent)}.{self.name}'
         return self.name
 
-    def get_name(self, qualified=False, **kwargs):
-        if qualified:
-            return self.qualified_name
+    def get_name(self, qualified=False, aliases=None, **kwargs):
+        if qualified and self.parent:
+            parent_name = get_name(self.parent, **kwargs)
+            if aliases:
+                parent_name = aliases.get(parent_name, parent_name)
+            return f'{parent_name}.{self.name}'
         return self.name
 
     def sql(self, **kwargs):
@@ -150,10 +145,10 @@ class Alias(Field):
 
     def __init__(self, field, alias):
         super().__init__(name=alias)
-        self.field = field
+        self.target = field
 
     def sql(self, **kwargs):
-        return f'{get_name(self.field, **kwargs)} AS {self.name!s}'
+        return f'{get_name(self.target, **kwargs)} AS {self.name}'
 
 
 class Operation(Comparable, Binary, Numerical, Aliasable):
@@ -173,14 +168,14 @@ class FieldsList(list):
 
     def sql(self, **kwargs):
         return ', '.join(
-            f'{sql(field, **kwargs)}' for field in self
+            f'{to_sql(field, **kwargs)}' for field in self
         )
 
 
 class And(list):
 
     def sql(self, **kwargs):
-        return f'({" AND ".join(sql(condition, **kwargs) for condition in self)})'
+        return f'({" AND ".join(to_sql(condition, **kwargs) for condition in self)})'
 
 
 class Aggregate(Field):

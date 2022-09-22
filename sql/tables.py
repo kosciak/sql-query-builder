@@ -1,7 +1,8 @@
 import logging
 
-from .utils import fields
-from .core import Field, FieldsList
+from .core import Field, FieldsList, Aliasable
+from .core import get_name
+
 from . import queries
 
 
@@ -37,7 +38,7 @@ class Column(Field):
             constraints = parts[2]
         return Column(name, data_type, constraints)
 
-    def definition(self):
+    def get_definition(self):
         definition = [self.name, ]
         if self.data_type:
             definition.append(self.data_type)
@@ -46,7 +47,7 @@ class Column(Field):
         return " ".join(definition)
 
     def __repr__(self):
-        return f'Column("{self.definition()}")'
+        return f'Column("{self.get_definition()}")'
 
 
 class Columns:
@@ -81,7 +82,10 @@ class Columns:
         yield from self.__columns.values()
 
     def __repr__(self):
-        return f'<{self.__class__.__name__} {fields(self)}>'
+        column_names = [
+            column.name for column in self
+        ]
+        return f'<{self.__class__.__name__} {", ".join(column_names)}>'
 
 
 class TableConstraint:
@@ -94,13 +98,17 @@ class TableConstraint:
         return f'{self.name} ({self.columns.sql(**kwargs)})'
 
 
-class Table:
+class Table(Aliasable):
 
     def __init__(self, name, columns):
         self.name = name
         self.columns = columns.set_table(self)
         self.constraints = []
         self.options = []
+
+    @property
+    def c(self):
+        return self.columns
 
     def primary_key(self, *columns):
         self.constraints.append(
@@ -119,23 +127,25 @@ class Table:
     def create(self, if_not_exists=False):
         return queries.CreateTable(self, if_not_exists)
 
+    def drop(self, if_not_exists=False):
+        return queries.DropTable(self, if_not_exists)
+
     # TODO: def alter(self, ...):
-    # TODO: def drop(self, ...):
 
     def index(self, name, *columns, unique=False):
         return Index(name, self, *columns, unique=unique)
 
     def select(self, *columns, distinct=False):
-        return queries.Select(self, *columns, distinct=distinct)
+        return queries.Select(*columns, from_table=self, distinct=distinct)
 
     def insert(self, *columns, replace=False):
-        return queries.Insert(self, *columns, replace=replace)
+        return queries.Insert(*columns, into_table=self, replace=replace)
 
     def update(self):
-        return queries.Update(self)
+        return queries.Update(table=self)
 
     def delete(self):
-        return queries.Delete(self)
+        return queries.Delete(from_table=self)
 
     def __str__(self):
         return self.name
@@ -144,18 +154,19 @@ class Table:
         return f'<{self.__class__.__name__} name="{self.name}">'
 
 
-class Index:
+class Index(Aliasable):
 
-    def __init__(self, name, table, *columns, unique=False):
+    def __init__(self, name, on_table, *columns, unique=False):
         self.name = name
-        self.table = table
+        self.table = on_table
         self.unique = unique
         self.columns = FieldsList(columns)
 
     def create(self, if_not_exists=False):
         return queries.CreateIndex(self, if_not_exists)
 
-    # TODO: def drop(self, ...):
+    def drop(self, if_not_exists=False):
+        return queries.DropIndex(self, if_not_exists)
 
     def __str__(self):
         return self.name
