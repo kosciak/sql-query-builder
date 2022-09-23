@@ -21,22 +21,22 @@ def to_sql(e, **kwargs):
 class Comparable:
 
     def __eq__(self, value):
-        return Operation('=', self, value)
+        return Condition('=', self, value)
 
     def __ne__(self, value):
-        return Operation('<>', self, value)
+        return Condition('<>', self, value)
 
     def __lt__(self, value):
-        return Operation('<', self, value)
+        return Condition('<', self, value)
 
     def __le__(self, value):
-        return Operation('<=', self, value)
+        return Condition('<=', self, value)
 
     def __gt__(self, value):
-        return Operation('>', self, value)
+        return Condition('>', self, value)
 
     def __ge__(self, value):
-        return Operation('>=', self, value)
+        return Condition('>=', self, value)
 
 
 class Binary:
@@ -137,8 +137,14 @@ class Field(Comparable, Binary, Numerical, Aliasable):
     def sql(self, **kwargs):
         return self.get_name(**kwargs)
 
+    def __hash__(self):
+        return hash(self.sql(qualified=True))
+
     def __str__(self):
         return self.sql()
+
+    def __repr__(self):
+        return f'<{self.__class__.__name__} {self.qualified_name}>'
 
 
 class Alias(Field):
@@ -151,7 +157,7 @@ class Alias(Field):
         return f'{get_name(self.target, **kwargs)} AS {self.name}'
 
 
-class Operation(Comparable, Binary, Numerical, Aliasable):
+class Expression:
 
     def __init__(self, operator, left, right):
         self.operator = operator
@@ -164,6 +170,16 @@ class Operation(Comparable, Binary, Numerical, Aliasable):
                f'{get_name(self.right, **kwargs)}'
 
 
+class Condition(Comparable, Expression):
+    pass
+
+
+class Operation(Comparable, Binary, Numerical, Aliasable, Expression):
+
+    def __hash__(self):
+        return hash(self.sql(qualified=True))
+
+
 class FieldsList(list):
 
     def sql(self, **kwargs):
@@ -172,10 +188,22 @@ class FieldsList(list):
         )
 
 
-class And(list):
+class ConditionsList(list):
+
+    OPERATOR = ''
 
     def sql(self, **kwargs):
-        return f'({" AND ".join(to_sql(condition, **kwargs) for condition in self)})'
+        return f'({f" {self.OPERATOR} ".join(to_sql(condition, **kwargs) for condition in self)})'
+
+
+class And(ConditionsList):
+
+    OPERATOR = 'AND'
+
+
+class Or(ConditionsList):
+
+    OPERATOR = 'OR'
 
 
 class Aggregate(Field):
