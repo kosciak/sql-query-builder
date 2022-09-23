@@ -1,11 +1,25 @@
+import copy
+import functools
 import itertools
 import logging
+
+from . import enums
 
 from .core import get_name, to_sql
 from .core import Alias, FieldsList, And
 
 
 log = logging.getLogger('drewno.sql.queries')
+
+
+def mutate_query(func):
+
+    @functools.wraps(func)
+    def _mutate_query(self, *args, **kwargs):
+        copied = copy.copy(self)
+        return func(copied, *args, **kwargs)
+
+    return _mutate_query
 
 
 # TODO: I don't like this name...
@@ -28,7 +42,7 @@ class Query:
         self.table = table
         self.index = index
 
-    def tables(self):
+    def _tables(self):
         yield self.table
 
     def _sql(self, **kwargs):
@@ -38,16 +52,25 @@ class Query:
     def sql(self, **kwargs):
         aliases = {}
         tables = set()
-        for table in self.tables():
+        for table in self._tables():
             if isinstance(table, Alias):
                 aliases[get_name(table.target)] = table.name
                 tables.add(table.target)
             else:
                 tables.add(table)
-        if len(tables) > 1:
+        if aliases or len(tables) > 1:
             kwargs['qualified'] = True
         kwargs.setdefault('aliases', {}).update(aliases)
         return '\n'.join(itertools.chain(self._sql(**kwargs)))
+
+    def __copy__(self):
+        newone = type(self).__new__(type(self))
+        for key, value in self.__dict__.items():
+            if key in {'table', 'index'}:
+                newone.__dict__[key] = value
+            else:
+                newone.__dict__[key] = copy.copy(value)
+        return newone
 
     def __str__(self):
         return self.sql()
@@ -93,21 +116,48 @@ class Joinable:
         super().__init__(*args, **kwargs)
         self.joins = []
 
-    def tables(self):
-        yield from super().tables()
+    def _tables(self):
+        yield from super()._tables()
         for join in self.joins:
-            yield from join.tables()
+            yield from join._tables()
 
+    @mutate_query
     def join(self, table, join_type=None):
         self.joins.append(
             Join(table, join_type=join_type)
         )
         return self
 
+    def inner_join(self, table):
+        return self.join(table, join_type=enums.Join.INNER)
+
+    def left_join(self, table):
+        return self.join(table, join_type=enums.Join.LEFT)
+
+    def right_join(self, table):
+        return self.join(table, join_type=enums.Join.RIGHT)
+
+    def full_join(self, table):
+        return self.join(table, join_type=enums.Join.FULL)
+
+    def left_outer_join(self, table):
+        return self.join(table, join_type=enums.Join.LEFT_OUTER)
+
+    def right_outer_join(self, table):
+        return self.join(table, join_type=enums.Join.RIGHT_OUTER)
+
+    def full_outer_join(self, table):
+        return self.join(table, join_type=enums.Join.FULL_OUTER)
+
+    def cross_join(self, table):
+        return self.join(table, join_type=enums.Join.CROSS)
+
+    @mutate_query
     def on(self, *conditions):
         self.joins[-1].on(*conditions)
         return self
 
+    @mutate_query
     def using(self, *columns):
         self.joins[-1].using(*columns)
         return self
@@ -124,6 +174,7 @@ class RowsFiltered:
         super().__init__(*args, **kwargs)
         self.rows_conditions = And()
 
+    @mutate_query
     def where(self, *conditions):
         self.rows_conditions.extend(conditions)
         return self
@@ -145,6 +196,7 @@ class Grouped:
         super().__init__(*args, **kwargs)
         self.group_by_columns = FieldsList()
 
+    @mutate_query
     def group_by(self, *columns):
         self.group_by_columns.extend(columns)
         return self
@@ -166,6 +218,7 @@ class GroupsFiltered(Grouped):
         super().__init__(*args, **kwargs)
         self.groups_conditions = And()
 
+    @mutate_query
     def having(self, *conditions):
         self.groups_conditions.extend(conditions)
         return self
@@ -187,6 +240,7 @@ class Ordered:
         super().__init__(*args, **kwargs)
         self.orderings = []
 
+    @mutate_query
     def order_by(self, *columns, order=None, nulls=None):
         self.orderings.append(
             Ordering(*columns, order=order, nulls=nulls)
@@ -309,12 +363,19 @@ class Select(Ordered, GroupsFiltered, RowsFiltered, Joinable, Query):
 
 class Insert(Query):
 
-    def __init__(self, *columns, into_table, replace=False):
+    def __init__(self, column_or_inserts=None, /, *columns, into_table, replace=False):
         super().__init__(table=into_table)
         self.replace = replace
-        self.columns = FieldsList(columns)
-        self.insert_values = FieldsList()
+        self.columns = FieldsList()
+        self.values = FieldsList()
+        if isinstance(column_or_inserts, dict):
+            self.columns.extend(column_or_inserts.keys())
+            self.values.extend(column_or_inserts.values())
+        elif column_or_inserts:
+            self.columns.append(column_or_inserts)
+        self.columns.extend(columns)
 
+    @mutate_query
     def values(self, *values):
         self.insert_values = FieldsList(values)
         return self
@@ -331,10 +392,10 @@ class Insert(Query):
                 f'    {self.columns.sql(**kwargs)}',
                 f')',
             ])
-        if self.insert_values:
+        if self.values:
             sql.extend([
                 f'VALUES (',
-                f'    {self.insert_values.sql(**kwargs)}',
+                f'    {self.values.sql(**kwargs)}',
                 f')',
             ])
         yield from sql
@@ -343,12 +404,13 @@ class Insert(Query):
 
 class Update(RowsFiltered, Query):
 
-    def __init__(self, table):
+    def __init__(self, updates=None, *, table):
         super().__init__(table=table)
-        self.values = []
+        self.updates = dict(updates or {})
 
+    @mutate_query
     def set(self, column, value):
-        self.values.append((column, value))
+        self.updates[column] = value
         return self
 
     def _sql(self, **kwargs):
@@ -357,11 +419,11 @@ class Update(RowsFiltered, Query):
             f'    {get_name(self.table, **kwargs)}',
             f'SET',
         ]
-        for column, value in self.values:
+        for column, value in self.updates.items():
             sql.append(
                 f'    {get_name(column, **kwargs)}={value},'
             )
-        if self.values:
+        if self.updates:
             sql[-1] = sql[-1].rstrip(',')
         yield from sql
         yield from super()._sql(**kwargs)

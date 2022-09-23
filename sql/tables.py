@@ -138,11 +138,11 @@ class Table(Aliasable):
     def select(self, *columns, distinct=False):
         return queries.Select(*columns, from_table=self, distinct=distinct)
 
-    def insert(self, *columns, replace=False):
-        return queries.Insert(*columns, into_table=self, replace=replace)
+    def insert(self, column_or_inserts=None, /, *columns, replace=False):
+        return queries.Insert(column_or_inserts, *columns, into_table=self, replace=replace)
 
-    def update(self):
-        return queries.Update(table=self)
+    def update(self, updates=None):
+        return queries.Update(updates, table=self)
 
     def delete(self):
         return queries.Delete(from_table=self)
