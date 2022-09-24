@@ -46,9 +46,6 @@ class Column(Field):
             definition.append(self.constraints)
         return " ".join(definition)
 
-    def __repr__(self):
-        return f'Column("{self.get_definition()}")'
-
 
 class Columns:
 

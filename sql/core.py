@@ -18,6 +18,21 @@ def to_sql(e, **kwargs):
     return e
 
 
+class Sql:
+
+    def sql(self, **kwargs):
+        raise NotImplementedError()
+
+    def __hash__(self):
+        return hash(self.sql(qualified=True))
+
+    def __str__(self):
+        return self.sql(qualified=True)
+
+    def __repr__(self):
+        return f'<{self.__class__.__name__} {self.sql(qualified=True)}>'
+
+
 class Comparable:
 
     def __eq__(self, value):
@@ -37,6 +52,9 @@ class Comparable:
 
     def __ge__(self, value):
         return Condition('>=', self, value)
+
+    def __hash__(self):
+        return super().__hash__()
 
 
 class Binary:
@@ -107,14 +125,13 @@ class Numerical:
         return Operation('%', value, self)
 
 
-
 class Aliasable:
 
     def alias(self, alias):
         return Alias(self, alias)
 
 
-class Field(Comparable, Binary, Numerical, Aliasable):
+class Field(Comparable, Binary, Numerical, Aliasable, Sql):
 
     def __init__(self, name, parent=None):
         self.name = name
@@ -137,15 +154,6 @@ class Field(Comparable, Binary, Numerical, Aliasable):
     def sql(self, **kwargs):
         return self.get_name(**kwargs)
 
-    def __hash__(self):
-        return hash(self.sql(qualified=True))
-
-    def __str__(self):
-        return self.sql()
-
-    def __repr__(self):
-        return f'<{self.__class__.__name__} {self.qualified_name}>'
-
 
 class Alias(Field):
 
@@ -157,17 +165,22 @@ class Alias(Field):
         return f'{get_name(self.target, **kwargs)} AS {self.name}'
 
 
-class Expression:
+class Expression(Sql):
 
     def __init__(self, operator, left, right):
         self.operator = operator
         self.left = left
         self.right = right
 
-    def sql(self, **kwargs):
-        return f'{get_name(self.left, **kwargs)}' \
+    def sql(self, parenthesis=False, **kwargs):
+        return f'{parenthesis and "(" or ""}' \
+               f'{to_sql(self.left, parenthesis=True, **kwargs)}' \
                f' {self.operator} ' \
-               f'{get_name(self.right, **kwargs)}'
+               f'{to_sql(self.right, parenthesis=True, **kwargs)}' \
+               f'{parenthesis and ")" or ""}'
+
+    def __repr__(self):
+        return f'<{self.__class__.__name__} {self.sql(qualified=True)}>'
 
 
 class Condition(Comparable, Expression):
@@ -175,9 +188,7 @@ class Condition(Comparable, Expression):
 
 
 class Operation(Comparable, Binary, Numerical, Aliasable, Expression):
-
-    def __hash__(self):
-        return hash(self.sql(qualified=True))
+    pass
 
 
 class FieldsList(list):
@@ -192,8 +203,14 @@ class ConditionsList(list):
 
     OPERATOR = ''
 
-    def sql(self, **kwargs):
-        return f'({f" {self.OPERATOR} ".join(to_sql(condition, **kwargs) for condition in self)})'
+    def sql(self, parenthesis=False, **kwargs):
+        conditions = [
+            to_sql(condition, parenthessis=True, **kwargs)
+            for condition in self
+        ]
+        return f'{parenthesis and "(" or ""}' \
+               f'{f" {self.OPERATOR} ".join(conditions)}' \
+               f'{parenthesis and ")" or ""}'
 
 
 class And(ConditionsList):

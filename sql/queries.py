@@ -49,7 +49,8 @@ class Query:
         # Yield from list of lines
         yield from []
 
-    def sql(self, **kwargs):
+    def _kwargs(self, **kwargs):
+        kwargs = dict(kwargs)
         aliases = {}
         tables = set()
         for table in self._tables():
@@ -61,6 +62,10 @@ class Query:
         if aliases or len(tables) > 1:
             kwargs['qualified'] = True
         kwargs.setdefault('aliases', {}).update(aliases)
+        return kwargs
+
+    def sql(self, **kwargs):
+        kwargs = self._kwargs(**kwargs)
         return '\n'.join(itertools.chain(self._sql(**kwargs)))
 
     def __copy__(self):
