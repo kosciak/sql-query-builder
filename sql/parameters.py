@@ -3,7 +3,7 @@ import logging
 from .core import Field
 
 
-log = logging.getLogger('drewno.sql.parameters')
+log = logging.getLogger('sql.parameters')
 
 
 class Parameter:

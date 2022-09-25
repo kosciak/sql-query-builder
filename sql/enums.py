@@ -1,7 +1,7 @@
 import logging
 
 
-log = logging.getLogger('drewno.sql.core')
+log = logging.getLogger('sql.core')
 
 
 class Order:

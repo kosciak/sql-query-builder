@@ -9,7 +9,7 @@ from .core import get_name, to_sql
 from .core import Alias, FieldsList, And
 
 
-log = logging.getLogger('drewno.sql.queries')
+log = logging.getLogger('sql.queries')
 
 
 def mutate_query(func):

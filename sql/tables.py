@@ -6,7 +6,7 @@ from .core import get_name
 from . import queries
 
 
-log = logging.getLogger('drewno.sql.core')
+log = logging.getLogger('sql.core')
 
 
 class Column(Field):
