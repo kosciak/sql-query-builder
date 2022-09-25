@@ -1,3 +1,21 @@
 [build-system]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "sql_query_builder"
+description = "Simple SQL query builder"
+authors = [
+  { name="Wojciech Pietrzok" },
+]
+license = {file = "LICENSE"}
+dynamic = [ "version", "readme" ]
+requires-python = ">=3.6"
+
+[project.urls]
+"Homepage" = "https://github.com/kosciak/sql_query_builder"
+
+[tool.setuptools.dynamic]
+version = {attr = "sql.__version__"}
+readme = {file = ["README.md"]}
+

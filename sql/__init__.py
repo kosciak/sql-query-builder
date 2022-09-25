@@ -1,3 +1,5 @@
+__version__ = "0.0.1"
+
 from .enums import Order, Nulls, Join
 
 from .core import Alias
