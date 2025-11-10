@@ -14,3 +14,5 @@ from .parameters import get_parameters_builder
 from .queries import CreateTable, CreateIndex, DropTable, DropIndex
 from .queries import Select, Insert, Update, Delete
 
+from .db import DB
+
