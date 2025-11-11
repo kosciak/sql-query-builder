@@ -1,4 +1,5 @@
 import logging
+import sqlite3
 
 
 log = logging.getLogger('sql.db')
@@ -6,10 +7,10 @@ log = logging.getLogger('sql.db')
 
 class DB:
 
-    def __init__(self, fn, table, indexes=None):
+    def __init__(self, fn, tables, indexes=None):
         self.fn = fn
         self._connection = None
-        self._table = table
+        self._tables = tables
         self._indexes = indexes or []
 
     @property
@@ -20,7 +21,7 @@ class DB:
                 detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
             )
             self._connection.row_factory = sqlite3.Row
-            self._create_table()
+            self._create_tables()
             self._create_indexes()
         return self._connection
 
@@ -31,10 +32,11 @@ class DB:
             params,
         )
 
-    def _create_table(self):
-        query = self._table.create(if_not_exists=True)
-        # print(query)
-        self.execute_query(query)
+    def _create_tables(self):
+        for table in self._tables:
+            query = self._table.create(if_not_exists=True)
+            # print(query)
+            self.execute_query(query)
 
     def _create_indexes(self):
         for index in self._indexes:
