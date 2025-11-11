@@ -34,7 +34,7 @@ class DB:
 
     def _create_tables(self):
         for table in self._tables:
-            query = self._table.create(if_not_exists=True)
+            query = table.create(if_not_exists=True)
             # print(query)
             self.execute_query(query)
 
