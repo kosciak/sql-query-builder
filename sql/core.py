@@ -125,13 +125,22 @@ class Numerical:
         return Operation('%', value, self)
 
 
+class Matchable:
+
+    def like(self, pattern):
+        return Operation('LIKE', self, pattern)
+
+    def glob(self, pattern):
+        return Operation('GLOB', self, pattern)
+
+
 class Aliasable:
 
     def alias(self, alias):
         return Alias(self, alias)
 
 
-class Field(Comparable, Binary, Numerical, Aliasable, Sql):
+class Field(Comparable, Binary, Numerical, Matchable, Aliasable, Sql):
 
     def __init__(self, name, parent=None):
         self.name = name
