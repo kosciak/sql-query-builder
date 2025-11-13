@@ -7,10 +7,13 @@ log = logging.getLogger('sql.db')
 
 class DB:
 
-    def __init__(self, fn, tables, indexes=None):
+    def __init__(self, fn, *tables, indexes=None):
         self.fn = fn
         self._connection = None
-        self._tables = tables
+        self._tables = {
+            table.name: table
+            for table in tables
+        }
         self._indexes = indexes or []
 
     @property
@@ -32,15 +35,27 @@ class DB:
             params,
         )
 
+    def commit(self):
+        self.connection.commit()
+
+    def rollback(self):
+        self.connection.rollback()
+
+    def close(self):
+        if self._connection:
+            self.connection.close()
+
     def _create_tables(self):
-        for table in self._tables:
+        for table in self._tables.values():
             query = table.create(if_not_exists=True)
             # print(query)
             self.execute_query(query)
+            self.commit()
 
     def _create_indexes(self):
         for index in self._indexes:
             query = index.create(if_not_exists=True)
             # print(query)
             self.execute_query(query)
+            self.commit()
 
