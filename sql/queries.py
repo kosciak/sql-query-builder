@@ -323,7 +323,7 @@ class AlterTable(Query):
     def _sql(self, **kwargs):
         sql = [
             f'ALTER TABLE' \
-            f'{get_name(self.table, **kwargs)}',
+            f' {get_name(self.table, **kwargs)}',
         ]
         if self.rename_to:
             sql.extend([
