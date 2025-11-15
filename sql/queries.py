@@ -307,6 +307,40 @@ class DropTable(Query):
         yield from super()._sql(**kwargs)
 
 
+class AlterTable(Query):
+
+    def __init__(self, table, *,
+                 rename_to=None,
+                 add_column=None,
+                 drop_column=None,
+                ):
+        super().__init__(table=table)
+        self.rename_to = rename_to
+        self.add_column = add_column
+        self.drop_column = drop_column
+        # TODO: rename_column
+
+    def _sql(self, **kwargs):
+        sql = [
+            f'ALTER TABLE' \
+            f'{get_name(self.table, **kwargs)}',
+        ]
+        if self.rename_to:
+            sql.extend([
+                f'RENAME TO {self.rename_to}',
+            ])
+        if self.add_column:
+            sql.extend([
+                f'ADD COLUMN {self.add_column.get_definition()}',
+            ])
+        if self.drop_column:
+            sql.extend([
+                f'DROP COLUMN {get_name(self.drop_column)}',
+            ])
+        yield from sql
+        yield from super()._sql(**kwargs)
+
+
 class CreateIndex(Query):
 
     def __init__(self, index, if_not_exists=False):

@@ -127,7 +127,16 @@ class Table(Aliasable):
     def drop(self, if_not_exists=False):
         return queries.DropTable(self, if_not_exists)
 
-    # TODO: def alter(self, ...):
+    def rename_to(self, name):
+        return queries.AlterTable(self, rename_to=name)
+
+    def add_column(self, column):
+        return queries.AlterTable(self, add_column=column)
+
+    def drop_column(self, column):
+        return queries.AlterTable(self, drop_column=column)
+
+    # TODO: rename_column(self, column, name):
 
     def index(self, name, *columns, unique=False):
         return Index(name, self, *columns, unique=unique)
